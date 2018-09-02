@@ -1,0 +1,8 @@
+[package]
+name = "paramaker"
+version = "0.1.0"
+authors = ["Hal Gentz <zegentzy@protonmail.com>"]
+
+[dependencies]
+#num = "0.2.0"
+#primal = "0.2"
