@@ -6,3 +6,4 @@ authors = ["Hal Gentz <zegentzy@protonmail.com>"]
 [dependencies]
 #num = "0.2.0"
 #primal = "0.2"
+rayon = "1.0.2"

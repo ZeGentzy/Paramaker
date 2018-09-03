@@ -10,8 +10,10 @@
 #![feature(nll, no_panic_pow)]
 
 //extern crate primal;
+extern crate rayon;
 
 //use primal::Sieve;
+use rayon::prelude::*;
 use std::{borrow::Borrow, ops::Range};
 
 #[derive(Clone, Copy)]
@@ -355,7 +357,7 @@ impl Token {
 	) -> Vec<(Self, Option<DerivedTokenData>)> {
 		let tokens = tokens.borrow();
 		tokens
-			.iter()
+			.par_iter()
 			.map(|(token, data)| {
 				let dd = data.as_ref().map(|data| DerivedTokenData {
 					pre_chunks:  if let Some(ref c) = data.pre_chunks {
@@ -389,7 +391,7 @@ impl Token {
 	) -> Vec<Self> {
 		let tokens = tokens.borrow();
 		let (pre_chunks, post_chunks): (Vec<_>, Vec<_>) = tokens
-			.iter()
+			.par_iter()
 			.filter_map(|(_, dtd)| {
 				dtd.as_ref().map(|dtd| {
 					(dtd.pre_chunks.clone(), dtd.post_chunks.clone())
@@ -398,15 +400,15 @@ impl Token {
 			.unzip();
 
 		let (mut br_starts, mut br_ends): (Vec<_>, Vec<_>) = pre_chunks
-			.iter()
-			.chain(post_chunks.iter())
+			.par_iter()
+			.chain(post_chunks.par_iter())
 			.filter_map(|br| br.clone().map(|br| (br.start, br.end)))
 			.unzip();
 
 		br_starts.sort();
 		br_ends.sort();
 
-		let mut tokens: Vec<_> = tokens.iter().map(|(t, _)| *t).collect();
+		let mut tokens: Vec<_> = tokens.par_iter().map(|(t, _)| *t).collect();
 		while !br_starts.is_empty() || !br_ends.is_empty() {
 			let br_start = br_starts.last().map(|i| *i);
 			let br_end = br_ends.last().map(|i| *i);
@@ -484,9 +486,8 @@ fn main() {
 		eq_right_solved
 	);
 
-	let mut next_divide_factor = 1;
 	let eq_left: Vec<_> = eq_left
-		.iter()
+		.par_iter()
 		.enumerate()
 		.map(|(i, token)| match token {
 			Number(n) => (Number(*n), None),
@@ -500,46 +501,56 @@ fn main() {
 					!Token::is_compatible(&eq_left, Direction::After, &chunks);
 
 				if do_after || do_before {
-					let (pre_divide_factor, post_divide_factor) =
-						match (do_before, do_after) {
-							(false, false) => (None, None),
-							(false, true) => (None, Some(next_divide_factor)),
-							(true, false) => (Some(next_divide_factor), None),
-							(true, true) => (
-								Some(next_divide_factor),
-								Some(next_divide_factor * chunks.0.len()),
-							),
-						};
-
-					match do_before {
-						false => (),
-						true => next_divide_factor *= chunks.0.len(),
-					}
-
-					match do_after {
-						false => (),
-						true => next_divide_factor *= chunks.1.len(),
-					}
-
 					let td = TokenData {
-						pre_chunks: if do_before {
+						pre_chunks:         if do_before {
 							Some(chunks.0)
 						} else {
 							None
 						},
-						post_chunks: if do_after {
+						post_chunks:        if do_after {
 							Some(chunks.1)
 						} else {
 							None
 						},
-						pre_divide_factor,
-						post_divide_factor,
+						pre_divide_factor:  None,
+						post_divide_factor: None,
 					};
 					(*op, Some(td))
 				} else {
 					(*op, None)
 				}
 			},
+		})
+		.collect();
+
+	let mut next_divide_factor = 1;
+	let eq_left: Vec<_> = eq_left
+		.into_iter()
+		.map(|(t, data)| match data {
+			Some(mut data) => {
+				let pre_divide_factor = match data.pre_chunks {
+					None => None,
+					Some(ref c) => {
+						let ret = Some(next_divide_factor);
+						next_divide_factor *= c.len();
+						ret
+					},
+				};
+				let post_divide_factor = match data.post_chunks {
+					None => None,
+					Some(ref c) => {
+						let ret = Some(next_divide_factor);
+						next_divide_factor *= c.len();
+						ret
+					},
+				};
+
+				data.pre_divide_factor = pre_divide_factor;
+				data.post_divide_factor = post_divide_factor;
+
+				(t, Some(data))
+			},
+			None => (t, None),
 		})
 		.collect();
 
@@ -550,25 +561,28 @@ fn main() {
 		next_divide_factor
 	);
 
-	for s in 0..next_divide_factor {
+	let found = (0..next_divide_factor).into_par_iter().find_any(|&s| {
 		let state = Token::derive_state(&eq_left, s);
 		let state = Token::insert_brackets(&state);
 		let state_solved = Token::solve(&state);
 		if state_solved == eq_right_solved {
-			println!(
-				"Found in {} attempt{}.",
-				s + 1,
-				if s == 0 { "" } else { "s" }
-			);
-			println!(
-				"{} = {} = {}",
-				Token::to_str(&state),
-				state_solved,
-				Token::to_str(&eq_right)
-			);
-			return;
+			true
+		} else {
+			false
 		}
-	}
+	});
 
-	println!("No matches.")
+	if let Some(s) = found {
+		let state = Token::derive_state(&eq_left, s);
+		let state = Token::insert_brackets(&state);
+		println!("Found state number {}.", s + 1,);
+		println!(
+			"{} = {} = {}",
+			Token::to_str(&state),
+			eq_right_solved,
+			Token::to_str(&eq_right)
+		);
+	} else {
+		println!("No matches.")
+	}
 }

@@ -23,11 +23,11 @@ Multiply, Number(232), Add, Number(122), Add, BracketStart, Number(343548),
 Divide, Number(2), Add, Number(10), BracketEnd, BracketEnd, BracketEnd, Add,
 Number(230), Divide, Number(2)]` and `[Number(4999), Divide, Number(2)]`.
 
-We start by solving the right hand side. In this case, `16 = 16`, or in the
-latter case `4999 / 2 = 2499.5`.
+We start by solving the right hand side. In the former case, `16 = 16`, or in
+the latter case `4999 / 2 = 2499.5`.
 
-We then must generate the `TokenData` for each non-bracket and non-numeric
-token. The `TokenData` structure is as follows:
+We then generate the `TokenData` for each non-bracket and non-numeric token. The
+`TokenData` structure is as follows:
 
 ```
 struct TokenData {
@@ -41,8 +41,9 @@ struct TokenData {
 Let's first explain what a chunk is. A chunk is either a single number or the
 range between and including two matching brackets. So, for `(2 + (3 + 4 + (5 +
 6)))`, the single numeric chunks are `[1..2, 4..5, 6..7, 9..10, 10..11]`, and
-the bracket chunks are `[0..15, 3..14, 8..13]`. Two chunks are "adjacent" if
-they both have the same "depth" (how many matching bracket pairs they are in).
+the bracket range chunks are `[0..15, 3..14, 8..13]`. Two chunks are "adjacent"
+if they both have the same "depth" (how many matching bracket pairs they are
+    in).
 
 So, `1..2` is adjacent to `3..14`, `4..5` is adjacent to `6..7` which is
 adjacent to `8..13` and finally `9..10` is adjacent to `10..11`.
@@ -57,13 +58,14 @@ adjacent to `8..13` and finally `9..10` is adjacent to `10..11`.
                ^-----^
                  8..13
 
-`TokenData`'s `pre_chunks` will might the first chunk before the token and all
-the chunks adjacent to that chunk, while `post_chunk` might contains the ones
-after. Emphasis on "might".
+`TokenData`'s `pre_chunks` might contain the first chunk before the token and
+all the chunks adjacent to that chunk, while `post_chunk` might contain the
+first chunk after the token and all the chunks adjacent to that chunk.  Emphasis
+on "might", as it might just instead be `None`.
 
 If `pre_chunks` is not `None`, then the `pre_divide_factor` will be equal to the
-last divide factor. Then the last divide factor will be multiplied by
-|`pre_chunks`|. Otherwise, the `pre_divide_factor` will be set to `None`. A
+last divide factor and the last divide factor will be multiplied by
+|`pre_chunks`|.  Otherwise, the `pre_divide_factor` will be set to `None`. A
 similar thing will happen to the `post_divide_factor`.
 
 Currently the program then prints out the `TokenData` for you to examine.
@@ -72,9 +74,9 @@ After this we iterate over `0..next_divide_factor`, each value will represent a
 unique combination of the chunks in `TokenData`. We decide which chunk to use by
 dividing the value by the divide factor then getting the modulo of the |chunks|. 
 
-For pre chunks, the end will always be overridden to the last pre chunk's end, 
-while for post chunks, the start will always be overridden to the first post
-chunk's start.
+For pre-chunks, the end will always be overridden to the last pre-chunk's end,
+while for post-chunks, the start will always be overridden to the first
+    post-chunk's start.
 
 Consider the following:
 9 + 9 + 9
@@ -118,17 +120,17 @@ If we iterate over 0..4, here is the four states we will get:
 +: 2..3 4..5
 9: None
 
-Note: How we have iterated over every possible state. 
+Note how we have now iterated over every possible state. 
 
-Also note that we often have states which are duplicated multiple times. We can
-stop this from happening by stopping bracket ranges which start in some other
-existing bracket range from extending out of it. However, I suspect that may
-take more time than simply solving the extra duplicate state.
+Also note that we often iterate over the same state multiple times. We can stop
+this from happening by insuring that when adding bracket range R, that for every
+already inserted bracket range Q, R is either completely contained within or
+completely outside of Q. Of course, such a test will probably be slower than
+just trying a couple states more than once.
 
-Also note that this method would allow us to iterate over subsets of the range
-`0..next_divide_factor` in parallel with ease. This might be something like a 10
-line change to this program, thanks to the powers of the Rust programing
-language and Rayon :).
+Also note that this method allows us to iterate over subsets of the range
+`0..next_divide_factor` in parallel. Thanks to the powers of the Rust programing
+language and Rayon, this only took like 10 lines of code changed :)
 
 Anyways, for every possible state, we just solve it and see if it matches the
 right hand side.
@@ -137,13 +139,10 @@ Now, as you might recall, I said we *might* have `pre_chunks` and `post_chunks`.
 This is because it's often not necessary to compute the brackets around some
 operations. Consider the example above: `9 + 9 + 9`. Due to the associative
 property of addition, we would not have to compute brackets for any of the
-operators above. 
-
-For the exact rules we use, please refer to the documentation above
-`is_compatible`.
+operators above. For the exact rules we use, please refer to the documentation
+above the function `is_compatible`.
 
 Possible Future Optimizations: 
- - Multithreading (easy enough)
  - A better `is_compatible` method.
  - Actually profiling and optimizing the code (think of all the branches
    OrenAudeles could get rid of if he tried).
